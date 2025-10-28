@@ -12,6 +12,7 @@ from datetime import datetime
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 from fund_pipeline import analytics as an
+from fund_pipeline import gdrive_integration as gdrive
 
 # Try importing PDF generation libraries
 try:
@@ -433,17 +434,54 @@ def generate_pdf_report(df, benchmark, as_of_date, analysis_level, sel_accounts,
     return buffer.getvalue()
 
 @st.cache_data(show_spinner=True)
-def _load_intermediary():
-    """Load intermediary dataset."""
-    intermediary_path = Path(__file__).resolve().parents[1] / "outputs" / "intermediary" / "latest"
-    
-    if (intermediary_path / "intermediary.csv").exists():
-        df = pd.read_csv(intermediary_path / "intermediary.csv")
-        df = an.coerce(df)
-        return df
-    else:
-        st.error("❌ No intermediary file found. Please run the data processing pipeline.")
+def _load_intermediary(data_source="Local Files", gdown_file_id: str | None = None):
+    """Load intermediary dataset from local files or Google Drive."""
+    if data_source == "Local Files":
+        # Try to load from local files (prefer Parquet for deployment)
+        intermediary_path = Path(__file__).resolve().parents[1] / "outputs" / "intermediary" / "latest"
+
+        pq_path = intermediary_path / "intermediary.parquet"
+        csv_path = intermediary_path / "intermediary.csv"
+
+        if pq_path.exists():
+            df = pd.read_parquet(pq_path)
+            df = an.coerce(df)
+            return df
+        if csv_path.exists():
+            df = pd.read_csv(csv_path)
+            df = an.coerce(df)
+            return df
+        st.error("❌ No local intermediary file found (parquet/csv). Please run the data pipeline or include the file in the repo.")
         return pd.DataFrame()
+    
+    elif data_source == "Google Drive":
+        # Try to load from Google Drive
+        try:
+            # If a direct File ID is provided, prefer gdown fast path
+            if gdown_file_id:
+                try:
+                    import gdown, tempfile, os
+                    url = f"https://drive.google.com/uc?id={gdown_file_id}"
+                    dst = os.path.join(tempfile.gettempdir(), "intermediary.csv")
+                    if not os.path.exists(dst):
+                        gdown.download(url, dst, quiet=True)
+                    df = pd.read_csv(dst)
+                    df = an.coerce(df)
+                    return df
+                except Exception as e:
+                    st.warning(f"⚠️ gdown download failed: {str(e)}. Falling back to OAuth method...")
+            if gdrive.HAS_GOOGLE_APIS:
+                df = gdrive._load_intermediary_from_gdrive_cached()
+                df = an.coerce(df)
+                return df
+            else:
+                st.error("❌ Google Drive API libraries not installed.")
+                return pd.DataFrame()
+        except Exception as e:
+            st.error(f"❌ Failed to load from Google Drive: {str(e)}")
+            return pd.DataFrame()
+    
+    return pd.DataFrame()
 
 @st.cache_data(show_spinner=True)
 def _load_aum():
@@ -461,7 +499,127 @@ def _load_aum():
     else:
         return pd.DataFrame()
 
-df = _load_intermediary()
+# ============================================================================
+# Sidebar
+# ============================================================================
+
+# Load initial data to get date range for date picker
+# Use default local files for initial load
+_initial_df = _load_intermediary("Local Files")
+if _initial_df.empty:
+    # Try Google Drive if local files not available
+    _initial_df = _load_intermediary("Google Drive")
+
+with st.sidebar:
+    st.markdown("### Data Source")
+    
+    # Data source selection
+    data_source = st.radio(
+        "Data Source",
+        ["Local Files", "Google Drive"],
+        index=0,
+        help="Choose whether to load data from local files or Google Drive"
+    )
+    
+    # Google Drive setup if selected
+    gdrive_method = "gdown (File ID)"
+    gdown_file_id = ""
+    if data_source == "Google Drive":
+        st.markdown("#### Google Drive Method")
+        gdrive_method = st.radio(
+            "Select method",
+            ["gdown (File ID)", "OAuth (Folder preset)"],
+            index=0,
+            help="gdown: download by a public File ID; OAuth: use Drive API to read preset folder"
+        )
+
+        if gdrive_method == "gdown (File ID)":
+            gdown_file_id = st.text_input(
+                "Google Drive File ID",
+                value="",
+                help="Paste the File ID of intermediary.csv (share setting: Anyone with the link can view)"
+            )
+            st.caption("Example ID: 1AbCdEFGhijkLmnOPqrstuVWXYZ")
+        else:
+            if not gdrive.HAS_GOOGLE_APIS:
+                st.error("❌ Google Drive API libraries not installed.")
+                st.info("Please install: `pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2`")
+            else:
+                # Check if credentials exist
+                if not Path("credentials.json").exists():
+                    st.warning("⚠️ Google Drive credentials not found.")
+                    if st.button("Setup Google Drive Credentials"):
+                        gdrive.setup_gdrive_credentials()
+                else:
+                    st.success("✅ Google Drive credentials found.")
+                    if st.button("Re-setup Google Drive Credentials"):
+                        gdrive.setup_gdrive_credentials()
+    
+    st.markdown("---")
+    st.markdown("### Analysis Level")
+    
+    # Analysis level selection
+    analysis_level = st.radio(
+        "Analysis Level",
+        ["Fund Level (TooSharpe)", "Account Level"],
+        index=0,
+        help="Fund Level: Aggregate analysis across all accounts\nAccount Level: Detailed analysis for selected account(s)"
+    )
+    
+    st.markdown("---")
+    st.markdown("### Global Controls")
+    
+    # As of Date - user only selects ending date, default to earliest available
+    if not _initial_df.empty and "Date" in _initial_df.columns:
+        dmin, dmax = _initial_df["Date"].min(), _initial_df["Date"].max()
+    else:
+        # Default dates if no data available
+        import datetime
+        dmin = datetime.date(2022, 1, 1)
+        dmax = datetime.date(2022, 12, 30)
+    
+    as_of_date = st.date_input("As of Date", value=dmax, min_value=dmin, max_value=dmax)
+    
+    # Benchmark
+    benchmark_path = Path(__file__).resolve().parents[1] / "outputs" / "cleaned" / "DailyIndexReturns_returns.csv"
+    if benchmark_path.exists():
+        bench_df = pd.read_csv(benchmark_path)
+        bm_choices = [c for c in bench_df.columns if c.lower() != "date"]
+        benchmark = st.selectbox("Benchmark", bm_choices, index=0 if bm_choices else 0)
+    else:
+        benchmark = "ACWI"
+        st.info("ℹ️ Benchmark file not found")
+    
+    # Account filter - only show for Account Level analysis
+    # Note: df will be loaded after sidebar based on selected data source
+    # We'll use _initial_df to get account list for now
+    if analysis_level == "Account Level":
+        st.markdown("---")
+        st.markdown("#### Account Selection")
+        if "Account" in _initial_df.columns:
+            accs = sorted(_initial_df["Account"].dropna().unique().tolist())
+            sel_accounts = st.multiselect("Select Account(s)", accs, default=accs[0] if accs else [])
+        else:
+            st.warning("No accounts available in data")
+            sel_accounts = []
+    elif analysis_level == "Fund Level":
+        # For Fund Level, show which accounts are included but don't filter
+        if "Account" in _initial_df.columns:
+            accs = sorted(_initial_df["Account"].dropna().unique().tolist())
+            st.markdown("---")
+            st.markdown(f"#### Included Accounts ({len(accs)} total)")
+            with st.expander("View all accounts"):
+                for acc in accs:
+                    st.text(f"• {acc}")
+            # Keep all accounts for fund-level analysis
+            sel_accounts = accs
+        else:
+            sel_accounts = []
+    else:
+        sel_accounts = []
+
+# Load data based on selected data source
+df = _load_intermediary(data_source, gdown_file_id=gdown_file_id if data_source == "Google Drive" and gdrive_method == "gdown (File ID)" and gdown_file_id else None)
 aum_df = _load_aum()
 
 if df.empty:
@@ -493,62 +651,8 @@ def _calculate_daily_aum(df_data, aum_data):
 # Calculate daily AUM for all dates
 daily_aum_df = _calculate_daily_aum(df, aum_df)
 
-# ============================================================================
-# Sidebar
-# ============================================================================
-
-with st.sidebar:
-    st.markdown("### Analysis Level")
-    
-    # Analysis level selection
-    analysis_level = st.radio(
-        "Analysis Level",
-        ["Fund Level (TooSharpe)", "Account Level"],
-        index=0,
-        help="Fund Level: Aggregate analysis across all accounts\nAccount Level: Detailed analysis for selected account(s)"
-    )
-    
-    st.markdown("---")
-    st.markdown("### Global Controls")
-    
-    # As of Date - user only selects ending date, default to earliest available
-    dmin, dmax = df["Date"].min(), df["Date"].max()
-    as_of_date = st.date_input("As of Date", value=dmax, min_value=dmin, max_value=dmax)
-    
-    # Benchmark
-    benchmark_path = Path(__file__).resolve().parents[1] / "outputs" / "cleaned" / "DailyIndexReturns_returns.csv"
-    if benchmark_path.exists():
-        bench_df = pd.read_csv(benchmark_path)
-        bm_choices = [c for c in bench_df.columns if c.lower() != "date"]
-        benchmark = st.selectbox("Benchmark", bm_choices, index=0 if bm_choices else 0)
-    else:
-        benchmark = "ACWI"
-        st.info("ℹ️ Benchmark file not found")
-    
-    # Account filter - only show for Account Level analysis
-    if analysis_level == "Account Level" and "Account" in df.columns:
-        st.markdown("---")
-        st.markdown("#### Account Selection")
-        accs = sorted(df["Account"].dropna().unique().tolist())
-        sel_accounts = st.multiselect("Select Account(s)", accs, default=accs[0] if accs else [])
-        if sel_accounts:
-            df = df[df["Account"].isin(sel_accounts)]
-        elif not accs:
-            st.warning("No accounts available")
-    elif analysis_level == "Fund Level" and "Account" in df.columns:
-        # For Fund Level, show which accounts are included but don't filter
-        accs = sorted(df["Account"].dropna().unique().tolist())
-        st.markdown("---")
-        st.markdown(f"#### Included Accounts ({len(accs)} total)")
-        with st.expander("View all accounts"):
-            for acc in accs:
-                st.text(f"• {acc}")
-        # Keep all accounts for fund-level analysis
-        sel_accounts = accs
-    else:
-        sel_accounts = []
-
 # Apply date filter - from earliest date to selected as_of_date
+dmin, dmax = df["Date"].min(), df["Date"].max()
 df = df[(df["Date"] >= pd.to_datetime(dmin)) & (df["Date"] <= pd.to_datetime(as_of_date))]
 
 # Store analysis level for use in display

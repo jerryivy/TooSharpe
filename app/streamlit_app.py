@@ -10,8 +10,13 @@ import base64
 import io
 from datetime import datetime
 
-sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
+# sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))                   
+sys.path.append(str(ROOT / "src"))  
+
 from fund_pipeline import analytics as an
+
 
 # Try importing PDF generation libraries
 try:

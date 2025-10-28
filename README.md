@@ -16,6 +16,44 @@ An institutional-grade performance analytics dashboard for the TooSharpe fund po
 - Python 3.8+
 - All Python packages listed in `requirements.txt`
 
+### Clone and Run Locally
+
+1. Clone the repository
+   ```bash
+   git clone <YOUR_REPO_URL>.git
+   cd toosharpe_case_study
+   ```
+
+2. (Recommended) Create and activate a virtual environment
+   ```bash
+   python -m venv .venv
+   # macOS/Linux
+   source .venv/bin/activate
+   # Windows (PowerShell)
+   # .venv\Scripts\Activate.ps1
+   ```
+
+3. Install dependencies
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. Prepare data files (local only)
+   - Ensure one of the following exists in the repository:
+     - `outputs/intermediary/latest/intermediary.parquet` (preferred), or
+     - `outputs/intermediary/latest/intermediary.csv`
+
+5. Run the app
+   ```bash
+   streamlit run app/streamlit_app.py
+   ```
+   Open the URL shown in the terminal (e.g., `http://localhost:8501`).
+
+6. (Optional) Regenerate data via notebook or script
+   - Notebook: `notebooks/Execution.ipynb`
+   - Script: `python scripts/run_pipeline.py`
+
 ### Installation
 
 1. Clone this repository

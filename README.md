@@ -8,7 +8,6 @@ An institutional-grade performance analytics dashboard for the TooSharpe fund po
 - **Liquidity Analysis**: Monitor liquidity metrics and position-level liquidity
 - **Risk & Attribution**: Analyze sector exposures, market cap distribution, and return attribution
 - **PDF Reports**: Generate comprehensive institutional reports
-- **Google Drive Integration**: Load intermediary data directly from Google Drive
 
 ## Getting Started
 
@@ -76,11 +75,11 @@ streamlit run app/streamlit_app.py
 
 The app will be available at `http://localhost:8501`
 
-**Data Sources:**
-- **Local Files**: Uses processed data from `outputs/intermediary/latest/` (default)
-- **Google Drive**: Loads intermediary data directly from Google Drive folder
+**Data Source (Local Only):**
+- The app loads intermediary from `outputs/intermediary/latest/intermediary.parquet` (preferred)
+- If Parquet is missing, it falls back to `outputs/intermediary/latest/intermediary.csv`
 
-**Note:** Make sure you have either run the data pipeline first OR set up Google Drive integration.
+Ensure one of the above files exists before starting the app.
 
 ## Project Structure
 
@@ -103,14 +102,10 @@ toosharpe_case_study/
 │   └── manifest.json             # Processing metadata
 ├── scripts/
 │   └── run_pipeline.py           # Standalone pipeline script
-├── setup_gdrive.py               # Google Drive setup script
-├── test_gdrive.py                # Google Drive integration test
-├── GDRIVE_SETUP.md               # Google Drive setup instructions
 └── src/fund_pipeline/           # Core processing modules
     ├── analytics.py              # Performance, liquidity, risk analytics
     ├── data_handling.py         # Data cleaning and integration
     ├── intermediary_builder.py # Intermediary dataset construction
-    ├── gdrive_integration.py    # Google Drive integration
     └── utils.py                 # Utility functions
 ```
 

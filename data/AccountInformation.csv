@@ -1,0 +1,8 @@
+Account,MonitorGroup,StrategyBucket,StaticNotional,DrawDownLimPctGMV,DrawdownLimMultipleOfAnnualizedVol
+ASTATISTICAL,Managed,Quant,1.00E+08,0.06,1.5
+EDISCRETIONARY,Managed,ELS,1.00E+08,0.05,1.5
+EENERGY,Managed,ELS,2.00E+08,0.075,1.5
+ESTAPLES,Managed,ELS,1.50E+08,0.05,1.5
+ELONGJOULES,Managed,ELO,1.00E+08,0.08,1.5
+ELEANSTAPLES,Managed,ELO,1.60E+08,0.08,1.5
+ACORPORATE,Managed,FixedIncome,5.00E+07,0.08,1.5

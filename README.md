@@ -8,6 +8,7 @@ An institutional-grade performance analytics dashboard for the TooSharpe fund po
 - **Liquidity Analysis**: Monitor liquidity metrics and position-level liquidity
 - **Risk & Attribution**: Analyze sector exposures, market cap distribution, and return attribution
 - **PDF Reports**: Generate comprehensive institutional reports
+- **Google Drive Integration**: Load intermediary data directly from Google Drive
 
 ## Getting Started
 
@@ -75,7 +76,11 @@ streamlit run app/streamlit_app.py
 
 The app will be available at `http://localhost:8501`
 
-**Note:** Make sure you have run the data pipeline first to generate the `outputs/intermediary/latest/` files.
+**Data Sources:**
+- **Local Files**: Uses processed data from `outputs/intermediary/latest/` (default)
+- **Google Drive**: Loads intermediary data directly from Google Drive folder
+
+**Note:** Make sure you have either run the data pipeline first OR set up Google Drive integration.
 
 ## Project Structure
 
@@ -98,10 +103,14 @@ toosharpe_case_study/
 │   └── manifest.json             # Processing metadata
 ├── scripts/
 │   └── run_pipeline.py           # Standalone pipeline script
+├── setup_gdrive.py               # Google Drive setup script
+├── test_gdrive.py                # Google Drive integration test
+├── GDRIVE_SETUP.md               # Google Drive setup instructions
 └── src/fund_pipeline/           # Core processing modules
     ├── analytics.py              # Performance, liquidity, risk analytics
     ├── data_handling.py         # Data cleaning and integration
     ├── intermediary_builder.py # Intermediary dataset construction
+    ├── gdrive_integration.py    # Google Drive integration
     └── utils.py                 # Utility functions
 ```
 
@@ -129,7 +138,28 @@ Four main tabs:
 - **Risk & Attribution**: Sector exposure, market cap distribution, P&L by sector
 - **Reports**: PDF report generation and data downloads
 
-### 3. Generating PDF Reports
+### 3. Google Drive Integration
+
+**Quick Setup:**
+```bash
+python setup_gdrive.py
+```
+
+**Manual Setup:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable Google Drive API and create OAuth2 credentials
+3. Download credentials as `credentials.json` to project root
+4. Ensure `intermediary.csv` exists in the Google Drive folder
+
+**Using Google Drive:**
+1. Start the Streamlit app
+2. In the sidebar, select "Google Drive" as data source
+3. Upload `credentials.json` if not already configured
+4. The app will automatically load data from Google Drive
+
+See `GDRIVE_SETUP.md` for detailed instructions.
+
+### 4. Generating PDF Reports
 
 1. Navigate to the "Reports & Downloads" tab
 2. Configure your analysis (date range, accounts, benchmark)

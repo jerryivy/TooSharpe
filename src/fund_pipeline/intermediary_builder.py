@@ -232,7 +232,7 @@ def build_intermediary_from_integrated(
     auto_save: bool = True,
     out_root: str | Path = "outputs",
     subdir: str = "intermediary",
-    write_csv: bool = False,
+    write_csv: bool = True,
     latest_link: bool = True,
     stamp: str | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
@@ -296,7 +296,7 @@ def _save_intermediary_payload(
     df_inter: pd.DataFrame,
     out_root: str | Path = "outputs",
     subdir: str = "intermediary",
-    write_csv: bool = False,
+    write_csv: bool = True,
     latest_link: bool = True,
     stamp: str | None = None,
 ) -> dict:

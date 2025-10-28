@@ -437,30 +437,33 @@ def generate_pdf_report(df, benchmark, as_of_date, analysis_level, sel_accounts,
     buffer.seek(0)
     return buffer.getvalue()
 
-@st.cache_data(show_spinner=True)
+# Define absolute paths for data files
+ROOT = Path(__file__).resolve().parents[1]
+DATA_FP = ROOT / "outputs" / "intermediary" / "latest" / "intermediary.parquet"
+CSV_FP = ROOT / "outputs" / "intermediary" / "latest" / "intermediary.csv"
+
+@st.cache_data(show_spinner="Loading intermediary…", ttl=86400)
 def _load_intermediary():
-    """Load intermediary dataset from local files or Google Drive."""
-    # Try to load from local files (prefer Parquet for deployment)
-    intermediary_path = Path(__file__).resolve().parents[1] / "outputs" / "intermediary" / "latest"
-
-    pq_path = intermediary_path / "intermediary.parquet"
-    csv_path = intermediary_path / "intermediary.csv"
-
-    if pq_path.exists():
-        df = pd.read_parquet(pq_path)
+    """Load intermediary dataset from local files."""
+    # Try Parquet first (preferred for deployment)
+    if DATA_FP.exists():
+        df = pd.read_parquet(DATA_FP)
         df = an.coerce(df)
         return df
-    if csv_path.exists():
-        df = pd.read_csv(csv_path)
+    
+    # Fallback to CSV
+    if CSV_FP.exists():
+        df = pd.read_csv(CSV_FP)
         df = an.coerce(df)
         return df
-    st.error("❌ No local intermediary file found (parquet/csv). Please run the data pipeline or include the file in the repo.")
+    
+    st.error(f"❌ No intermediary file found at:\n- {DATA_FP}\n- {CSV_FP}\n\nPlease run the data pipeline or include the file in the repo.")
     return pd.DataFrame()
 
 @st.cache_data(show_spinner=True)
 def _load_aum():
     """Load AUM data."""
-    aum_path = Path(__file__).resolve().parents[1] / "data" / "AUM.csv"
+    aum_path = ROOT / "data" / "AUM.csv"
     
     if aum_path.exists():
         aum_df = pd.read_csv(aum_path)
@@ -511,7 +514,7 @@ with st.sidebar:
     as_of_date = st.date_input("As of Date", value=dmax, min_value=dmin, max_value=dmax)
     
     # Benchmark
-    benchmark_path = Path(__file__).resolve().parents[1] / "outputs" / "cleaned" / "DailyIndexReturns_returns.csv"
+    benchmark_path = ROOT / "outputs" / "cleaned" / "DailyIndexReturns_returns.csv"
     if benchmark_path.exists():
         bench_df = pd.read_csv(benchmark_path)
         bm_choices = [c for c in bench_df.columns if c.lower() != "date"]

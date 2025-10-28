@@ -12,7 +12,6 @@ from datetime import datetime
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 from fund_pipeline import analytics as an
-from fund_pipeline import gdrive_integration as gdrive
 
 # Try importing PDF generation libraries
 try:
@@ -434,53 +433,23 @@ def generate_pdf_report(df, benchmark, as_of_date, analysis_level, sel_accounts,
     return buffer.getvalue()
 
 @st.cache_data(show_spinner=True)
-def _load_intermediary(data_source="Local Files", gdown_file_id: str | None = None):
+def _load_intermediary():
     """Load intermediary dataset from local files or Google Drive."""
-    if data_source == "Local Files":
-        # Try to load from local files (prefer Parquet for deployment)
-        intermediary_path = Path(__file__).resolve().parents[1] / "outputs" / "intermediary" / "latest"
+    # Try to load from local files (prefer Parquet for deployment)
+    intermediary_path = Path(__file__).resolve().parents[1] / "outputs" / "intermediary" / "latest"
 
-        pq_path = intermediary_path / "intermediary.parquet"
-        csv_path = intermediary_path / "intermediary.csv"
+    pq_path = intermediary_path / "intermediary.parquet"
+    csv_path = intermediary_path / "intermediary.csv"
 
-        if pq_path.exists():
-            df = pd.read_parquet(pq_path)
-            df = an.coerce(df)
-            return df
-        if csv_path.exists():
-            df = pd.read_csv(csv_path)
-            df = an.coerce(df)
-            return df
-        st.error("❌ No local intermediary file found (parquet/csv). Please run the data pipeline or include the file in the repo.")
-        return pd.DataFrame()
-    
-    elif data_source == "Google Drive":
-        # Try to load from Google Drive
-        try:
-            # If a direct File ID is provided, prefer gdown fast path
-            if gdown_file_id:
-                try:
-                    import gdown, tempfile, os
-                    url = f"https://drive.google.com/uc?id={gdown_file_id}"
-                    dst = os.path.join(tempfile.gettempdir(), "intermediary.csv")
-                    if not os.path.exists(dst):
-                        gdown.download(url, dst, quiet=True)
-                    df = pd.read_csv(dst)
-                    df = an.coerce(df)
-                    return df
-                except Exception as e:
-                    st.warning(f"⚠️ gdown download failed: {str(e)}. Falling back to OAuth method...")
-            if gdrive.HAS_GOOGLE_APIS:
-                df = gdrive._load_intermediary_from_gdrive_cached()
-                df = an.coerce(df)
-                return df
-            else:
-                st.error("❌ Google Drive API libraries not installed.")
-                return pd.DataFrame()
-        except Exception as e:
-            st.error(f"❌ Failed to load from Google Drive: {str(e)}")
-            return pd.DataFrame()
-    
+    if pq_path.exists():
+        df = pd.read_parquet(pq_path)
+        df = an.coerce(df)
+        return df
+    if csv_path.exists():
+        df = pd.read_csv(csv_path)
+        df = an.coerce(df)
+        return df
+    st.error("❌ No local intermediary file found (parquet/csv). Please run the data pipeline or include the file in the repo.")
     return pd.DataFrame()
 
 @st.cache_data(show_spinner=True)
@@ -504,56 +473,12 @@ def _load_aum():
 # ============================================================================
 
 # Load initial data to get date range for date picker
-# Use default local files for initial load
-_initial_df = _load_intermediary("Local Files")
-if _initial_df.empty:
-    # Try Google Drive if local files not available
-    _initial_df = _load_intermediary("Google Drive")
+# Use local files only
+_initial_df = _load_intermediary()
 
 with st.sidebar:
     st.markdown("### Data Source")
-    
-    # Data source selection
-    data_source = st.radio(
-        "Data Source",
-        ["Local Files", "Google Drive"],
-        index=0,
-        help="Choose whether to load data from local files or Google Drive"
-    )
-    
-    # Google Drive setup if selected
-    gdrive_method = "gdown (File ID)"
-    gdown_file_id = ""
-    if data_source == "Google Drive":
-        st.markdown("#### Google Drive Method")
-        gdrive_method = st.radio(
-            "Select method",
-            ["gdown (File ID)", "OAuth (Folder preset)"],
-            index=0,
-            help="gdown: download by a public File ID; OAuth: use Drive API to read preset folder"
-        )
-
-        if gdrive_method == "gdown (File ID)":
-            gdown_file_id = st.text_input(
-                "Google Drive File ID",
-                value="",
-                help="Paste the File ID of intermediary.csv (share setting: Anyone with the link can view)"
-            )
-            st.caption("Example ID: 1AbCdEFGhijkLmnOPqrstuVWXYZ")
-        else:
-            if not gdrive.HAS_GOOGLE_APIS:
-                st.error("❌ Google Drive API libraries not installed.")
-                st.info("Please install: `pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2`")
-            else:
-                # Check if credentials exist
-                if not Path("credentials.json").exists():
-                    st.warning("⚠️ Google Drive credentials not found.")
-                    if st.button("Setup Google Drive Credentials"):
-                        gdrive.setup_gdrive_credentials()
-                else:
-                    st.success("✅ Google Drive credentials found.")
-                    if st.button("Re-setup Google Drive Credentials"):
-                        gdrive.setup_gdrive_credentials()
+    st.info("Using local files in repo: outputs/intermediary/latest/intermediary.parquet (fallback CSV)")
     
     st.markdown("---")
     st.markdown("### Analysis Level")
@@ -618,8 +543,8 @@ with st.sidebar:
     else:
         sel_accounts = []
 
-# Load data based on selected data source
-df = _load_intermediary(data_source, gdown_file_id=gdown_file_id if data_source == "Google Drive" and gdrive_method == "gdown (File ID)" and gdown_file_id else None)
+# Load data (local only)
+df = _load_intermediary()
 aum_df = _load_aum()
 
 if df.empty:
